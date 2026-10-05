@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow"><title>ArchiDB Blog-Admin</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
 <style>
 :root{--bg:#f4f7fb;--fg:#0c1b33;--card:#fff;--mut:#51607a;--acc:#1a6fe0;--line:#dbe3ef}
@@ -38,7 +38,7 @@ function prev(){$("pv").innerHTML=marked.parse($("b").value||"")}
 function fill(p){cur=p?p.id:null;$("t").value=p?p.title:"";$("s").value=p?p.slug:"";$("su").value=p?p.summary||"":"";$("au").value=p?p.author||"":"Vladislav Sloboder";$("dt").value=p&&p.published_at?p.published_at.slice(0,10):"";$("b").value=p?p.body||"":"";$("pub").checked=p?p.published:false;$("msg").textContent="";prev()}
 async function load(){var r=await sb.from("posts").select("*").order("created_at",{ascending:false});if(r.error){$("msg").textContent=r.error.message;return}
 $("list").innerHTML="";r.data.forEach(function(p){var d=document.createElement("div");d.className="it";d.innerHTML="<b></b><div class='tg'>"+(p.published?"VERÖFFENTLICHT":"ENTWURF")+"</div>";d.firstChild.textContent=p.title;d.onclick=function(){fill(p)};$("list").appendChild(d)})}
-$("go").onclick=async function(){var r=await sb.auth.signInWithPassword({email:$("em").value.trim(),password:$("pw").value});if(r.error)$("lm").textContent=r.error.message;else show(true)};
+$("go").onclick=async function(){var r=await sb.auth.signInWithPassword({email:$("em").value.trim(),password:$("pw").value});if(r.error)$("lm").textContent=r.error.message+" ("+(r.error.status||"?")+" / "+(r.error.code||"")+")";else show(true)};$("lm").onclick=null;
 $("out").onclick=async function(){await sb.auth.signOut();show(false)};
 $("new").onclick=function(){fill(null)};$("b").oninput=prev;
 $("save").onclick=async function(){var t=$("t").value.trim();if(!t){$("msg").textContent="Titel fehlt.";return}
