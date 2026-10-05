@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><title>ArchiDB Blog-Admin</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<style>
+:root{--bg:#f4f7fb;--fg:#0c1b33;--card:#fff;--mut:#51607a;--acc:#1a6fe0;--line:#dbe3ef}
+@media (prefers-color-scheme:dark){:root{--bg:#07142b;--fg:#e8eefb;--card:#0e2247;--mut:#9fb0cf;--acc:#4da3ff;--line:#1c355f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif;padding:16px}
+.w{max-width:1100px;margin:0 auto}h1{font-size:22px;margin:0 0 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+input,textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit;margin:4px 0 10px}
+textarea{min-height:280px;font-family:ui-monospace,monospace}
+button{padding:9px 16px;border-radius:8px;border:0;background:var(--acc);color:#fff;font-weight:700;cursor:pointer;margin-right:6px}
+button.o{background:none;color:var(--acc);border:2px solid var(--acc)}button.d{background:#c0392b}
+.row{display:grid;gap:14px;grid-template-columns:260px 1fr}@media(max-width:760px){.row{grid-template-columns:1fr}}
+.it{padding:8px;border-radius:8px;cursor:pointer;border:1px solid var(--line);margin-bottom:6px}.it:hover{border-color:var(--acc)}
+.tg{font-size:11px;font-weight:700;color:var(--mut)}.pv{border:1px dashed var(--line);border-radius:8px;padding:10px}.pv img{max-width:100%}
+#msg{color:var(--mut);margin:8px 0}
+</style></head><body><div class="w">
+<h1>ArchiDB Blog-Admin</h1>
+<div id="login" class="card" hidden><label>E-Mail<input id="em" type="email"></label><label>Passwort<input id="pw" type="password"></label><button id="go">Anmelden</button><div id="lm" style="color:#c0392b"></div></div>
+<div id="app" hidden><div class="row">
+<div><button id="new" style="width:100%;margin:0 0 10px">+ Neuer Artikel</button><div id="list"></div><button class="o" id="out" style="margin-top:10px">Abmelden</button></div>
+<div class="card"><label>Titel<input id="t"></label><label>Slug (URL-Name, leer = automatisch)<input id="s"></label>
+<label>Kurztext<input id="su"></label><label>Autor<input id="au" value="Vladislav Sloboder"></label>
+<label>Veröffentlichungsdatum<input id="dt" type="date"></label>
+<label>Text (Markdown)<textarea id="b"></textarea></label>
+<label><input type="checkbox" id="pub" style="width:auto"> Veröffentlicht</label>
+<div><button id="save">Speichern</button><button class="d" id="del">Löschen</button></div><div id="msg"></div>
+<h3>Vorschau</h3><div class="pv" id="pv"></div></div></div></div></div>
+<script>
+var U="https://tkfurduojwxrrvfjblkb.supabase.co",K="sb_publishable_H7Z5jwdHa4mz4OnjsSEKZA_rEM9Kn4c";
+var sb=supabase.createClient(U,K),cur=null,$=function(i){return document.getElementById(i)};
+function slug(s){return s.toLowerCase().replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")}
+function show(l){$("login").hidden=l;$("app").hidden=!l;if(l)load()}
+function prev(){$("pv").innerHTML=marked.parse($("b").value||"")}
+function fill(p){cur=p?p.id:null;$("t").value=p?p.title:"";$("s").value=p?p.slug:"";$("su").value=p?p.summary||"":"";$("au").value=p?p.author||"":"Vladislav Sloboder";$("dt").value=p&&p.published_at?p.published_at.slice(0,10):"";$("b").value=p?p.body||"":"";$("pub").checked=p?p.published:false;$("msg").textContent="";prev()}
+async function load(){var r=await sb.from("posts").select("*").order("created_at",{ascending:false});if(r.error){$("msg").textContent=r.error.message;return}
+$("list").innerHTML="";r.data.forEach(function(p){var d=document.createElement("div");d.className="it";d.innerHTML="<b></b><div class='tg'>"+(p.published?"VERÖFFENTLICHT":"ENTWURF")+"</div>";d.firstChild.textContent=p.title;d.onclick=function(){fill(p)};$("list").appendChild(d)})}
+$("go").onclick=async function(){var r=await sb.auth.signInWithPassword({email:$("em").value.trim(),password:$("pw").value});if(r.error)$("lm").textContent=r.error.message;else show(true)};
+$("out").onclick=async function(){await sb.auth.signOut();show(false)};
+$("new").onclick=function(){fill(null)};$("b").oninput=prev;
+$("save").onclick=async function(){var t=$("t").value.trim();if(!t){$("msg").textContent="Titel fehlt.";return}
+var pub=$("pub").checked,d=$("dt").value?new Date($("dt").value).toISOString():(pub?new Date().toISOString():null);
+var row={title:t,slug:$("s").value.trim()||slug(t),summary:$("su").value,author:$("au").value,body:$("b").value,published:pub,published_at:d};
+var r=cur?await sb.from("posts").update(row).eq("id",cur).select():await sb.from("posts").insert(row).select();
+if(r.error){$("msg").textContent="Fehler: "+r.error.message;return}
+cur=r.data[0].id;$("msg").textContent="Gespeichert. Auf archidb.de erscheint der Artikel nach dem nächsten Abruf (stündlich).";load()};
+$("del").onclick=async function(){if(!cur||!confirm("Wirklich löschen?"))return;var r=await sb.from("posts").delete().eq("id",cur);if(r.error){$("msg").textContent=r.error.message;return}fill(null);load()};
+sb.auth.getSession().then(function(r){show(!!r.data.session)});
+</script></body></html>
