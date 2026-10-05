@@ -205,5 +205,5 @@ document.getElementById("fname").textContent=CFG.name;
 
 document.querySelectorAll(".lang button").forEach(function(b){b.onclick=function(){setLang(b.dataset.l)}});
 var s=null;try{s=localStorage.getItem("lang")}catch(e){}
-setLang(s||((navigator.language||"de").slice(0,2)==="de"?"de":"en"));
+setLang(s||"de");
 </script></body></html>
