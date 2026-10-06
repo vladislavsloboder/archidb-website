@@ -28,6 +28,9 @@ button.o{background:none;color:var(--acc);border:2px solid var(--acc)}button.d{b
 <label>Text (Markdown)<textarea id="b"></textarea></label>
 <label><input type="checkbox" id="pub" style="width:auto"> Veröffentlicht</label>
 <div><button id="save">Speichern</button><button class="d" id="del">Löschen</button></div><div id="msg"></div>
+<h3>LinkedIn-Beitrag</h3><textarea id="li" style="min-height:160px;font-family:inherit"></textarea>
+<div><button type="button" id="lic">Kopieren &amp; auf LinkedIn teilen</button><button type="button" class="o" id="lip">Kopieren &amp; Unternehmensseite öffnen</button><button type="button" class="o" id="lig">Neu erzeugen</button></div>
+<p style="color:var(--mut);font-size:13px">Der Artikel muss veröffentlicht und online sein (nach dem Update-Lauf). Der Text liegt danach in der Zwischenablage, im LinkedIn-Fenster einfügen und absenden.</p>
 <h3>Vorschau</h3><div class="pv" id="pv"></div></div></div></div></div>
 <script>
 var U="https://tkfurduojwxrrvfjblkb.supabase.co",K="sb_publishable_H7Z5jwdHa4mz4OnjsSEKZA_rEM9Kn4c";
@@ -35,9 +38,15 @@ var cur=null,$=function(i){return document.getElementById(i)},REM=localStorage.g
 function slug(s){return s.toLowerCase().replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")}
 function show(l){$("login").hidden=l;$("app").hidden=!l;if(l)load()}
 function prev(){$("pv").innerHTML=marked.parse($("b").value||"")}
-function fill(p){cur=p?p.id:null;$("t").value=p?p.title:"";$("s").value=p?p.slug:"";$("su").value=p?p.summary||"":"";$("au").value=p?p.author||"":"Vladislav Sloboder";$("dt").value=p&&p.published_at?p.published_at.slice(0,10):"";$("b").value=p?p.body||"":"";$("pub").checked=p?p.published:false;$("msg").textContent="";prev()}
+function fill(p){cur=p?p.id:null;$("t").value=p?p.title:"";$("s").value=p?p.slug:"";$("su").value=p?p.summary||"":"";$("au").value=p?p.author||"":"Vladislav Sloboder";$("dt").value=p&&p.published_at?p.published_at.slice(0,10):"";$("b").value=p?p.body||"":"";$("pub").checked=p?p.published:false;$("msg").textContent="";prev();liGen()}
 async function load(){var r=await sb.from("posts").select("*").order("created_at",{ascending:false});if(r.error){$("msg").textContent=r.error.message;return}
 $("list").innerHTML="";r.data.forEach(function(p){var d=document.createElement("div");d.className="it";d.innerHTML="<b></b><div class='tg'>"+(p.published?"VERÖFFENTLICHT":"ENTWURF")+"</div>";d.firstChild.textContent=p.title;d.onclick=function(){fill(p)};$("list").appendChild(d)})}
+function tg(s){var m=[["firebird","#Firebird"],["hqbird","#HQbird"],["postgres","#PostgreSQL"],["oracle","#Oracle"],["mysql","#MySQL"],["mariadb","#MariaDB"],["sql server","#SQLServer"],["migration","#Migration"],["performance","#Performance"],["backup","#Backup"],["cloud","#Cloud"],["sicherheit","#Datensicherheit"]],o=["#Datenbank","#DBA"];s=s.toLowerCase();m.forEach(function(x){if(s.indexOf(x[0])>-1&&o.length<7)o.push(x[1])});return o.join(" ")}
+function liGen(){var t=$("t").value.trim();if(!t){$("li").value="";return}var sl=$("s").value.trim()||slug(t),su=$("su").value.trim();$("li").value="📘 Neu im Blog: "+t+"\n\n"+(su?su+"\n\n":"")+"Den ganzen Artikel lesen: https://archidb.de/blog/"+sl+"/\n\n"+tg(t+" "+su+" "+$("b").value)}
+function cp(){var v=$("li").value;if(navigator.clipboard)navigator.clipboard.writeText(v).catch(function(){});else{$("li").select();document.execCommand("copy")}$("msg").textContent="LinkedIn-Text kopiert. Im LinkedIn-Fenster einfügen (Strg+V)."}
+$("lig").onclick=liGen;
+$("lic").onclick=function(){var t=$("t").value.trim();if(!t)return;cp();window.open("https://www.linkedin.com/sharing/share-offsite/?url="+encodeURIComponent("https://archidb.de/blog/"+($("s").value.trim()||slug(t))+"/"),"_blank")};
+$("lip").onclick=function(){cp();window.open("https://www.linkedin.com/company/archidb/","_blank")};
 $("login").onsubmit=async function(e){e.preventDefault();var rem=$("rem").checked;sb=mk(rem);var r=await sb.auth.signInWithPassword({email:$("em").value.trim(),password:$("pw").value});
 if(r.error){$("lm").textContent=r.error.message+" ("+(r.error.status||"?")+" / "+(r.error.code||"")+")";return}
 try{localStorage.setItem("adm_rem",rem?"1":"0");if(rem)localStorage.setItem("adm_email",$("em").value.trim());else localStorage.removeItem("adm_email")}catch(x){}show(true)};
@@ -45,7 +54,7 @@ function loadMd(f){var rd=new FileReader();rd.onload=function(){var t=String(rd.
 if(fm){b=fm[2];fm[1].split(/\r?\n/).forEach(function(l){var i=l.indexOf(":");if(i>0)m[l.slice(0,i).trim().toLowerCase()]=l.slice(i+1).trim().replace(/^["']|["']$/g,"")})}
 if(!m.title){var hh=b.match(/^\s*#\s+(.+)\r?\n/);if(hh){m.title=hh[1].trim();b=b.replace(hh[0],"")}}
 if(m.title)$("t").value=m.title;if(m.slug)$("s").value=m.slug;if(m.summary||m.description)$("su").value=m.summary||m.description;if(m.author)$("au").value=m.author;if(m.date)$("dt").value=m.date.slice(0,10);
-$("b").value=b.trim();prev();$("msg").textContent="Datei geladen: "+f.name+". Bitte prüfen, dann Speichern."+($("t").value?"":" Titel fehlt noch.")};rd.readAsText(f,"utf-8")}
+$("b").value=b.trim();prev();liGen();$("msg").textContent="Datei geladen: "+f.name+". Bitte prüfen, dann Speichern."+($("t").value?"":" Titel fehlt noch.")};rd.readAsText(f,"utf-8")}
 $("up").onclick=function(){$("fi").click()};$("fi").onchange=function(){if(this.files[0])loadMd(this.files[0]);this.value=""};
 $("drop").ondragover=function(e){e.preventDefault()};$("drop").ondrop=function(e){e.preventDefault();if(e.dataTransfer.files[0])loadMd(e.dataTransfer.files[0])};
 $("out").onclick=async function(){await sb.auth.signOut();show(false)};
@@ -55,7 +64,7 @@ var pub=$("pub").checked,d=$("dt").value?new Date($("dt").value).toISOString():(
 var row={title:t,slug:$("s").value.trim()||slug(t),summary:$("su").value,author:$("au").value,body:$("b").value,published:pub,published_at:d};
 var r=cur?await sb.from("posts").update(row).eq("id",cur).select():await sb.from("posts").insert(row).select();
 if(r.error){$("msg").textContent="Fehler: "+r.error.message;return}
-cur=r.data[0].id;$("msg").textContent="Gespeichert. Auf archidb.de erscheint der Artikel nach dem nächsten Abruf (stündlich).";load()};
+cur=r.data[0].id;liGen();$("msg").textContent="Gespeichert. Auf archidb.de erscheint der Artikel nach dem nächsten Abruf (stündlich).";load()};
 $("del").onclick=async function(){if(!cur||!confirm("Wirklich löschen?"))return;var r=await sb.from("posts").delete().eq("id",cur);if(r.error){$("msg").textContent=r.error.message;return}fill(null);load()};
 sb.auth.getSession().then(function(r){show(!!r.data.session)});
 </script></body></html>
