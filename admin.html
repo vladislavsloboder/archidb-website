@@ -19,10 +19,10 @@ button.o{background:none;color:var(--acc);border:2px solid var(--acc)}button.d{b
 #msg{color:var(--mut);margin:8px 0}
 </style></head><body><div class="w">
 <h1>ArchiDB Blog-Admin</h1>
-<div id="login" class="card" hidden><label>E-Mail<input id="em" type="email"></label><label>Passwort<input id="pw" type="password"></label><button id="go">Anmelden</button><div id="lm" style="color:#c0392b"></div></div>
+<form id="login" class="card" hidden autocomplete="on"><label>E-Mail<input id="em" name="username" type="email" autocomplete="username"></label><label>Passwort<input id="pw" name="password" type="password" autocomplete="current-password"></label><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="rem" style="width:auto;margin:0"> Angemeldet bleiben und E-Mail merken</label><button id="go" type="submit" style="margin-top:8px">Anmelden</button><div id="lm" style="color:#c0392b"></div></form>
 <div id="app" hidden><div class="row">
 <div><button id="new" style="width:100%;margin:0 0 10px">+ Neuer Artikel</button><div id="list"></div><button class="o" id="out" style="margin-top:10px">Abmelden</button></div>
-<div class="card"><label>Titel<input id="t"></label><label>Slug (URL-Name, leer = automatisch)<input id="s"></label>
+<div class="card"><div id="drop" style="border:2px dashed var(--line);border-radius:10px;padding:12px;margin-bottom:12px;text-align:center;color:var(--mut)">📄 .md-Datei hierher ziehen oder <button type="button" class="o" id="up" style="margin:0 0 0 6px">Datei wählen</button><input type="file" id="fi" accept=".md,.markdown,.txt" hidden></div><label>Titel<input id="t"></label><label>Slug (URL-Name, leer = automatisch)<input id="s"></label>
 <label>Kurztext<input id="su"></label><label>Autor<input id="au" value="Vladislav Sloboder"></label>
 <label>Veröffentlichungsdatum<input id="dt" type="date"></label>
 <label>Text (Markdown)<textarea id="b"></textarea></label>
@@ -31,14 +31,23 @@ button.o{background:none;color:var(--acc);border:2px solid var(--acc)}button.d{b
 <h3>Vorschau</h3><div class="pv" id="pv"></div></div></div></div></div>
 <script>
 var U="https://tkfurduojwxrrvfjblkb.supabase.co",K="sb_publishable_H7Z5jwdHa4mz4OnjsSEKZA_rEM9Kn4c";
-var sb=supabase.createClient(U,K),cur=null,$=function(i){return document.getElementById(i)};
+var cur=null,$=function(i){return document.getElementById(i)},REM=localStorage.getItem("adm_rem")==="1",sb;function mk(r){return supabase.createClient(U,K,{auth:{storage:r?localStorage:sessionStorage,persistSession:true}})}sb=mk(REM);var se=localStorage.getItem("adm_email");if(se){$("em").value=se;$("rem").checked=true}
 function slug(s){return s.toLowerCase().replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")}
 function show(l){$("login").hidden=l;$("app").hidden=!l;if(l)load()}
 function prev(){$("pv").innerHTML=marked.parse($("b").value||"")}
 function fill(p){cur=p?p.id:null;$("t").value=p?p.title:"";$("s").value=p?p.slug:"";$("su").value=p?p.summary||"":"";$("au").value=p?p.author||"":"Vladislav Sloboder";$("dt").value=p&&p.published_at?p.published_at.slice(0,10):"";$("b").value=p?p.body||"":"";$("pub").checked=p?p.published:false;$("msg").textContent="";prev()}
 async function load(){var r=await sb.from("posts").select("*").order("created_at",{ascending:false});if(r.error){$("msg").textContent=r.error.message;return}
 $("list").innerHTML="";r.data.forEach(function(p){var d=document.createElement("div");d.className="it";d.innerHTML="<b></b><div class='tg'>"+(p.published?"VERÖFFENTLICHT":"ENTWURF")+"</div>";d.firstChild.textContent=p.title;d.onclick=function(){fill(p)};$("list").appendChild(d)})}
-$("go").onclick=async function(){var r=await sb.auth.signInWithPassword({email:$("em").value.trim(),password:$("pw").value});if(r.error)$("lm").textContent=r.error.message+" ("+(r.error.status||"?")+" / "+(r.error.code||"")+")";else show(true)};$("lm").onclick=null;
+$("login").onsubmit=async function(e){e.preventDefault();var rem=$("rem").checked;sb=mk(rem);var r=await sb.auth.signInWithPassword({email:$("em").value.trim(),password:$("pw").value});
+if(r.error){$("lm").textContent=r.error.message+" ("+(r.error.status||"?")+" / "+(r.error.code||"")+")";return}
+try{localStorage.setItem("adm_rem",rem?"1":"0");if(rem)localStorage.setItem("adm_email",$("em").value.trim());else localStorage.removeItem("adm_email")}catch(x){}show(true)};
+function loadMd(f){var rd=new FileReader();rd.onload=function(){var t=String(rd.result).replace(/^\uFEFF/,""),m={},b=t,fm=t.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?([\s\S]*)$/);
+if(fm){b=fm[2];fm[1].split(/\r?\n/).forEach(function(l){var i=l.indexOf(":");if(i>0)m[l.slice(0,i).trim().toLowerCase()]=l.slice(i+1).trim().replace(/^["']|["']$/g,"")})}
+if(!m.title){var hh=b.match(/^\s*#\s+(.+)\r?\n/);if(hh){m.title=hh[1].trim();b=b.replace(hh[0],"")}}
+if(m.title)$("t").value=m.title;if(m.slug)$("s").value=m.slug;if(m.summary||m.description)$("su").value=m.summary||m.description;if(m.author)$("au").value=m.author;if(m.date)$("dt").value=m.date.slice(0,10);
+$("b").value=b.trim();prev();$("msg").textContent="Datei geladen: "+f.name+". Bitte prüfen, dann Speichern."+($("t").value?"":" Titel fehlt noch.")};rd.readAsText(f,"utf-8")}
+$("up").onclick=function(){$("fi").click()};$("fi").onchange=function(){if(this.files[0])loadMd(this.files[0]);this.value=""};
+$("drop").ondragover=function(e){e.preventDefault()};$("drop").ondrop=function(e){e.preventDefault();if(e.dataTransfer.files[0])loadMd(e.dataTransfer.files[0])};
 $("out").onclick=async function(){await sb.auth.signOut();show(false)};
 $("new").onclick=function(){fill(null)};$("b").oninput=prev;
 $("save").onclick=async function(){var t=$("t").value.trim();if(!t){$("msg").textContent="Titel fehlt.";return}
