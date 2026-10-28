@@ -1,0 +1,65 @@
+<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Der Herzschlag der alten Datenbank – ArchiDB Blog</title><meta name="description" content=""><link rel="canonical" href="https://archidb.de/blog/der-herzschlag-der-alten-datenbank/">
+<meta property="og:type" content="article"><meta property="og:title" content="Der Herzschlag der alten Datenbank"><meta property="og:description" content=""><meta property="og:url" content="https://archidb.de/blog/der-herzschlag-der-alten-datenbank/"><meta property="og:image" content="https://archidb.de/og-image.jpg">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Der Herzschlag der alten Datenbank", "description": "", "inLanguage": "de", "datePublished": "2026-10-28", "mainEntityOfPage": "https://archidb.de/blog/der-herzschlag-der-alten-datenbank/", "author": {"@type": "Person", "name": "Vladislav Sloboder"}, "publisher": {"@type": "Organization", "name": "ArchiDB", "url": "https://archidb.de/"}}</script>
+<style>:root{--bg:#f4f7fb;--fg:#0c1b33;--card:#fff;--mut:#51607a;--acc:#1a6fe0;--line:#dbe3ef}@media(prefers-color-scheme:dark){:root{--bg:#07142b;--fg:#e8eefb;--card:#0e2247;--mut:#9fb0cf;--acc:#4da3ff;--line:#1c355f}}
+body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.8 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}a{color:var(--acc)}
+header,footer{background:var(--card);border-bottom:1px solid var(--line);padding:14px 20px}footer{border:0;border-top:1px solid var(--line);color:var(--mut);font-size:14px}
+header a{font-weight:800;letter-spacing:.06em;text-decoration:none;color:var(--fg)}header b{color:var(--acc)}
+main{max-width:720px;margin:0 auto;padding:36px 20px}h1{font-size:34px;line-height:1.2;margin:0 0 8px}h2{font-size:26px;margin:36px 0 10px}h3{font-size:20px}.meta{color:var(--mut);font-size:14px;margin:0 0 24px}
+code{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:.88em}pre{background:#0b1b36;color:#e6edf7;border-radius:10px;padding:16px;overflow-x:auto}pre code{background:none;border:0;padding:0;color:inherit}
+blockquote{margin:0 0 20px;padding:4px 18px;border-left:4px solid var(--acc);background:var(--card);color:var(--mut)}table{border-collapse:collapse;display:block;overflow-x:auto}th,td{border:1px solid var(--line);padding:8px 12px}img{max-width:100%;height:auto;border-radius:10px}</style><script defer src="https://cloud.umami.is/script.js" data-website-id="feec6a83-3346-4469-988c-ce236cd8bc5d"></script></head>
+<body><header><a href="/">ARCHI<b>DB</b></a> &nbsp;·&nbsp; <a href="/#/blog" style="font-weight:400">Blog</a></header>
+<main><h1>Der Herzschlag der alten Datenbank</h1><p class="meta">2026-10-28 · Vladislav Sloboder</p><p><em>Wie ich Firebird 2.5 zum Sprechen brachte – und was mich eine Monitoring-Plattform dabei lehrte</em></p>
+<p>Von Vladislav Sloboder · ArchiDB</p>
+<p>Es gibt Datenbanken, die niemand mehr anfasst, weil sie funktionieren. Firebird 2.5 ist eine davon. In Warenwirtschaften, Abrechnungssystemen und Lagerverwaltungen läuft sie seit mehr als einem Jahrzehnt, leise wie ein Maschinenraum tief im Bauch eines Schiffes. Das Tückische an leisen Maschinen: Man hört sie erst, wenn sie verstummen.</p>
+<p>Mich ließ das nicht los. Wer ein Vierteljahrhundert lang Datenbanken betreut, lernt, dass ein Ausfall selten mit einem Knall beginnt. Er beginnt mit einer Zahl, die langsam in die falsche Richtung wandert, Tag für Tag, unbemerkt, weil niemand sie anschaut. Also stellte ich mir eine einfache Frage: Was würde ich sehen wollen, wenn ich das Ohr an dieses Schiff legen könnte?</p>
+<h2>Die Instrumente im Maschinenraum</h2>
+<p>Firebird besitzt seit Version 2.1 eine Reihe versteckter Instrumente, die MON$-Tabellen. Sie verraten, wer verbunden ist, was gerade läuft und wie es um die Transaktionen steht – und die sind der eigentliche Herzschlag. Jede Transaktion trägt eine fortlaufende Nummer. Daneben führt die Datenbank Buch über die älteste Transaktion, die noch Spuren hinterlässt (OIT), und die älteste, die noch offen ist (OAT).</p>
+<p>Der Abstand zwischen der nächsten Nummer und der ältesten offenen ist wie ein Seil zwischen Schiff und Anker. Bleibt er kurz, ist alles gut. Wird er länger und länger, hält irgendwo jemand eine Transaktion fest, die längst hätte enden sollen. Dann kann die Garbage Collection nicht aufräumen, alte Datensatzversionen stapeln sich, und das Schiff wird träge, ohne dass ein einziger Alarm erklingt.</p>
+<p>Ich wollte dieses Seil sichtbar machen. So entstand ein kleiner Exporter in Python, der die Instrumente ausliest und im Format von Prometheus anbietet, damit Percona PMM und Grafana daraus Kurven zeichnen können.</p>
+<h2>Der Zeiger, der log</h2>
+<p>Die erste Version war schnell geschrieben, die Metriken direkt im Code. Sie lief, sie lieferte Zahlen, und ich war zufrieden. Bis ich im Protokoll eine Zeile las, die dort schon lange stand:</p>
+<p><em>Table unknown – MON$LOCKS.</em></p>
+<p>Ich hatte eine Tabelle abgefragt, die es in Firebird 2.5 nie gegeben hat. Der Fehler war nicht laut, er stand nur im Log, und die Anzeige im Dashboard zeigte unbeirrt eine freundliche Null. Schlimmer noch: Der Fehler riss alle nachfolgenden Abfragen mit sich. Ein Messgerät, das im Zweifel Null anzeigt, ist gefährlicher als eines, das gar nichts anzeigt. Die Null sieht nach Ruhe aus.</p>
+<p>Das war der Moment, in dem ich den Exporter neu dachte. Heute stehen alle Metriken in einer Datei, <code>metrics.json</code>, jede mit ihrer eigenen Abfrage und jede für sich abgesichert: Scheitert eine, läuft der Rest weiter, und der Fehler wird sichtbar gezählt. Bei jedem Abruf fragt der Exporter die Datenbank neu, und eine eigene Metrik, <code>firebird_up</code>, sagt ehrlich, ob die Verbindung überhaupt steht. Keine alten Werte mehr, die Normalität vortäuschen.</p>
+<h2>Das Labyrinth hinter der freundlichen Tür</h2>
+<p>Der Exporter war bereit. Nun brauchte er ein Zuhause: einen PMM-Server, einen Agenten, ein paar Container in Docker Compose. Was folgte, war weniger Handwerk als Detektivarbeit.</p>
+<p><strong>Der Agent, der nie erwachte.</strong> Ich hatte den Startbefehl des PMM-Clients durch ein eigenes Skript ersetzt. Der Container lief, schwieg aber – kein Agent, keine Anmeldung, nur ein geduldiges <code>tail</code>, das ins Leere lauschte.</p>
+<p><strong>Die freundliche Tür.</strong> Der Server antwortete auf jede Anfrage mit demselben Satz: <em>500 Internal Server Error</em>. Es war der Pförtner, nginx, der höflich meldete, dass etwas nicht stimmte, ohne zu sagen, was. Dahinter fand ich ein leeres Haus: Die Datenbank des Servers fand ihr Verzeichnis nicht, ein anderer Dienst startete im Sekundentakt neu und fiel wieder um. Die Ursache war so schlicht wie unsichtbar. Das Image, das ich verwendete, war für Intel-Prozessoren gebaut, mein Mac aber trägt Apple Silicon und versuchte es in einer Emulation. Erst mit PMM 3, das auch für ARM erscheint, kam Leben ins Haus.</p>
+<p><strong>Eine Datei, die niemand nennt.</strong> Der Client der neuen Version verlangte eine Konfigurationsdatei, ohne es freundlich zu sagen, und brach mit einer Meldung ab, die erst beim dritten Lesen Sinn ergab.</p>
+<p><strong>Ein Schlüssel, der nicht passte.</strong> Mein Agent wurde mit <em>Invalid username or password</em> abgewiesen, bis ich statt eines Passworts ein Service-Token einsetzte, das genau dafür gedacht ist.</p>
+<p>Und dann, in einem der vielen Fenster, das, wofür sich alles gelohnt hatte:</p>
+<pre><code>firebird_up 1.0
+firebird_transaction_oit 2590
+firebird_transaction_oat 2591
+firebird_transaction_gap 1
+</code></pre>
+<p>Eine Datenbank, ruhig atmend. Das Seil zwischen Schiff und Anker: ein einziges Glied lang. Es ist erstaunlich, wie sehr einen eine Eins berühren kann, wenn man Stunden damit verbracht hat, sie zu finden.</p>
+<h2>Was heute gemessen wird</h2>
+<p>Aus dem kleinen Experiment wurde ein Werkzeug, das viel mehr hört als nur den Herzschlag:</p>
+<ul>
+<li>den Transaktionszähler, OIT, OAT und OST sowie die Lücke dazwischen,</li>
+<li>Verbindungen insgesamt, aktive und nach Benutzer,</li>
+<li>die älteste offene Transaktion und das am längsten laufende Statement in Sekunden,</li>
+<li>Cache-Trefferquote und Seiten-I/O,</li>
+<li>Einfügungen, Änderungen, Löschungen, sequentielle gegen indexierte Lesezugriffe und Garbage Collection,</li>
+<li>Speicher, Datenbankgröße und freien Plattenplatz,</li>
+<li>und jede eigene SQL-Abfrage, die Sie in <code>metrics.json</code> ergänzen.</li>
+</ul>
+<p>Dazu gehört ein Dashboard, das aus den Zahlen Kurven und aus den Kurven Gewissheit macht.</p>
+<h2>Für alle Umgebungen: ein Container</h2>
+<p>Am Ende war mir wichtig, dass niemand all das noch einmal erleben muss. Deshalb steckt der Exporter in einem Docker-Image, das Python, alle Bibliotheken in festen Versionen und den Firebird-Client mitbringt. Auf dem Server genügt:</p>
+<pre><code>docker compose up -d --build
+curl -s http://localhost:9103/metrics | grep firebird_up
+</code></pre>
+<p>Der PMM-Agent bekommt den Exporter mit einem einzigen Befehl vorgestellt:</p>
+<pre><code>pmm-admin add external --service-name=firebird-exporter --group=firebird --listen-port=9103 --metrics-path=/metrics
+</code></pre>
+<p>Und bei mehreren Umgebungen? Dort dasselbe Image, dieselben Versionen, dieselbe Handhabung. Das ist der ganze Zauber.</p>
+<h2>Epilog</h2>
+<p>Ich glaube, dass gutes Monitoring weniger mit Technik zu tun hat als mit Vertrauen. Dem Vertrauen, dass die Stille im Maschinenraum echte Stille ist und kein Messfehler. Dass eine Null eine Null bedeutet und kein Fehler im Verborgenen sitzt. Dass man nachts ruhig schlafen kann, weil jemand die Instrumente ablesen würde, wenn es nötig wäre.</p>
+<p>Der Exporter ist Open Source und steht unter der MIT-Lizenz. Sie finden ihn, das Dockerfile und alles, was dazugehört, hier:</p>
+<p><strong><a href="https://github.com/vladislavsloboder/firebird-exporter">github.com/vladislavsloboder/firebird-exporter</a></strong></p>
+<p>Wenn Sie ihn in Ihrer Umgebung einrichten möchten oder sich fragen, was Ihre Firebird-Datenbank Ihnen gerade nicht erzählt, sprechen Sie mich gern an. Index gut, alles gut.</p><p><a href="/#/blog">← Alle Artikel</a></p></main>
+<footer>© 2026 ArchiDB · <a href="/#/impressum">Impressum</a> · <a href="/#/datenschutz">Datenschutz</a></footer></body></html>
