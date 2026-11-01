@@ -1,0 +1,96 @@
+<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Firebird 5 Migration: Der Praxis-Leitfaden für einen Umstieg ohne böse Überraschungen – ArchiDB Blog</title><meta name="description" content="Firebird 5 Migration in 5 Schritten: ODS prüfen, Stolpersteine finden, parallel sichern und wiederherstellen. Praxis-Checkliste vom Datenbankarchitekten."><link rel="canonical" href="https://archidb.de/blog/firebird-5-migration-leitfaden/">
+<meta property="og:type" content="article"><meta property="og:title" content="Firebird 5 Migration: Der Praxis-Leitfaden für einen Umstieg ohne böse Überraschungen"><meta property="og:description" content="Firebird 5 Migration in 5 Schritten: ODS prüfen, Stolpersteine finden, parallel sichern und wiederherstellen. Praxis-Checkliste vom Datenbankarchitekten."><meta property="og:url" content="https://archidb.de/blog/firebird-5-migration-leitfaden/"><meta property="og:image" content="https://archidb.de/og-image.jpg">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Firebird 5 Migration: Der Praxis-Leitfaden für einen Umstieg ohne böse Überraschungen", "description": "Firebird 5 Migration in 5 Schritten: ODS prüfen, Stolpersteine finden, parallel sichern und wiederherstellen. Praxis-Checkliste vom Datenbankarchitekten.", "inLanguage": "de", "datePublished": "2026-10-06", "mainEntityOfPage": "https://archidb.de/blog/firebird-5-migration-leitfaden/", "author": {"@type": "Person", "name": "Vladislav Sloboder"}, "publisher": {"@type": "Organization", "name": "ArchiDB", "url": "https://archidb.de/"}}</script>
+<style>:root{--bg:#f4f7fb;--fg:#0c1b33;--card:#fff;--mut:#51607a;--acc:#1a6fe0;--line:#dbe3ef}@media(prefers-color-scheme:dark){:root{--bg:#07142b;--fg:#e8eefb;--card:#0e2247;--mut:#9fb0cf;--acc:#4da3ff;--line:#1c355f}}
+body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.8 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}a{color:var(--acc)}
+header,footer{background:var(--card);border-bottom:1px solid var(--line);padding:14px 20px}footer{border:0;border-top:1px solid var(--line);color:var(--mut);font-size:14px}
+header a{font-weight:800;letter-spacing:.06em;text-decoration:none;color:var(--fg)}header b{color:var(--acc)}
+main{max-width:720px;margin:0 auto;padding:36px 20px}h1{font-size:34px;line-height:1.2;margin:0 0 8px}h2{font-size:26px;margin:36px 0 10px}h3{font-size:20px}.meta{color:var(--mut);font-size:14px;margin:0 0 24px}
+code{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:.88em}pre{background:#0b1b36;color:#e6edf7;border-radius:10px;padding:16px;overflow-x:auto}pre code{background:none;border:0;padding:0;color:inherit}
+blockquote{margin:0 0 20px;padding:4px 18px;border-left:4px solid var(--acc);background:var(--card);color:var(--mut)}table{border-collapse:collapse;display:block;overflow-x:auto}th,td{border:1px solid var(--line);padding:8px 12px}img{max-width:100%;height:auto;border-radius:10px}</style><script defer src="https://cloud.umami.is/script.js" data-website-id="feec6a83-3346-4469-988c-ce236cd8bc5d"></script></head>
+<body><header><a href="/">ARCHI<b>DB</b></a> &nbsp;·&nbsp; <a href="/#/blog" style="font-weight:400">Blog</a></header>
+<main><h1>Firebird 5 Migration: Der Praxis-Leitfaden für einen Umstieg ohne böse Überraschungen</h1><p class="meta">2026-10-06 · Vladislav Sloboder</p><p>Deine Firebird-Datenbank läuft seit Jahren stabil. Niemand fasst sie an, und genau das ist das Problem: Backups dauern über Nacht, ein Sweep legt zur Mittagszeit den Server lahm, und das Wort „Upgrade“ löst im Team Schweißausbrüche aus.</p>
+<p>Dabei ist der Umstieg auf <strong>Firebird 5</strong> besser planbar, als die meisten denken. In diesem Leitfaden zeige ich dir den Fahrplan, den ich in Datenbankprojekten verwende, und die Stolpersteine, über die ich immer wieder stolpere.</p>
+<h2>Warum sich der Umstieg lohnt</h2>
+<p>Firebird 5.0 ändert nichts an der Architektur, bringt aber Werkzeuge, die den Alltag spürbar verbessern:</p>
+<ul>
+<li><strong>Parallele Wartung:</strong> Backup, Restore, Sweep und Indexaufbau laufen auf mehreren Threads. Je nach Hardware und Datenbank halbiert oder drittelt das die Restore-Zeit.</li>
+<li><strong>Besserer Optimizer:</strong> Abfragen bekommen vielfach bessere Ausführungspläne, ohne dass du eine Zeile SQL anfasst.</li>
+<li><strong>Neue SQL-Features:</strong> Partielle Indizes, <code>SKIP LOCKED</code> für Queue-artige Zugriffe, ein Profiler für SQL und PSQL und mehrzeiliges <code>RETURNING</code>.</li>
+<li><strong>Minor-Upgrade ohne Backup/Restore:</strong> Von Firebird 4.0 auf 5.0 genügt oft ein einziger Befehl.</li>
+</ul>
+<h2>Schritt 1: Wo stehst du? Die ODS-Version entscheidet</h2>
+<p>Jede Firebird-Version hat eine On-Disk-Structure (ODS). Sie bestimmt, wie viel Aufwand der Umstieg bedeutet:</p>
+<table>
+<thead>
+<tr>
+<th>Deine Version</th>
+<th>ODS</th>
+<th>Weg zu Firebird 5.0</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Firebird 2.5</td>
+<td>11.2</td>
+<td>Backup und Restore, plus Kompatibilitätsprüfung</td>
+</tr>
+<tr>
+<td>Firebird 3.0</td>
+<td>12.0</td>
+<td>Backup und Restore</td>
+</tr>
+<tr>
+<td>Firebird 4.0</td>
+<td>13.0</td>
+<td><code>gfix -upgrade</code> oder Backup/Restore</td>
+</tr>
+<tr>
+<td>Firebird 5.0</td>
+<td>13.1</td>
+<td>bereits am Ziel</td>
+</tr>
+</tbody>
+</table>
+<p>Datenbanken im Format 13.0 kann ein Firebird-5.0-Server weiter öffnen, mit einigen noch nicht nutzbaren neuen Funktionen. Alle älteren Datenbanken müssen per <code>gbak</code> in das neue Format überführt werden.</p>
+<h2>Schritt 2: Stolpersteine finden, bevor sie dich finden</h2>
+<p>Mein wichtigster Rat: <strong>Fang nicht mit dem Backup an, sondern mit der Prüfung.</strong> Diese Punkte kosten in der Praxis die meiste Zeit:</p>
+<ul>
+<li><strong>Authentifizierung:</strong> Ab Firebird 3 ist ein neues Verfahren Standard. Alte Treiber und Clients, die damit nicht zurechtkommen, melden sich nicht mehr an.</li>
+<li><strong>Benutzerverwaltung:</strong> Die Sicherheitsdatenbank wandert nicht automatisch mit. Von 4.0 auf 5.0 sicherst du <code>security4.fdb</code> mit dem alten <code>gbak</code> und stellst sie mit dem neuen als <code>security5.fdb</code> wieder her.</li>
+<li><strong>UDFs:</strong> Alte externe Funktionen funktionieren in neueren Versionen nicht mehr. Meist ersetzen eingebaute Funktionen oder UDRs sie.</li>
+<li><strong>Client-Bibliotheken:</strong> Anwendungen, die eine feste <code>fbclient</code>-Version mitbringen, brauchen ein Update.</li>
+<li><strong>Zeichensätze und reservierte Wörter:</strong> Prüf sie mit einer Testumgebung, nicht erst in Produktion.</li>
+</ul>
+<h2>Schritt 3: Der Testlauf auf einer Kopie</h2>
+<p>Mach eine vollständige Probe auf einem separaten Server, mit einer echten Kopie deiner Daten:</p>
+<pre><code class="language-bash"># Backup auf der bisherigen Version
+gbak -b -g -v -user SYSDBA -password &lt;passwort&gt; \
+  -se server/3050:service_mgr meine_db backup.fbk
+
+# Restore mit Firebird 5.0, parallel mit 4 Threads
+gbak -c -par 4 -v -user SYSDBA -password &lt;passwort&gt; \
+  backup.fbk neue_db.fdb
+</code></pre>
+<p>Die Option <code>-g</code> spart beim Backup die Garbage Collection. Damit <code>-par</code> greift, muss in der <code>firebird.conf</code> die Einstellung <code>MaxParallelWorkers</code> gesetzt sein. In der Standardkonfiguration läuft nichts parallel.</p>
+<p>Vergleiche anschließend Laufzeiten, Abfragepläne und die Ergebnisse deiner wichtigsten Reports. Wenn eine Abfrage plötzlich langsamer ist, willst du das jetzt wissen und nicht am Montagmorgen.</p>
+<h2>Schritt 4: Der Sonderweg von 4.0 auf 5.0</h2>
+<p>Wenn du bereits auf 4.0 bist, geht es kürzer:</p>
+<pre><code class="language-bash">gfix -upgrade neue_db.fdb -user SYSDBA -password &lt;passwort&gt;
+</code></pre>
+<p>Das hebt die Datenbank innerhalb der gleichen Hauptversion auf 13.1 an, ohne Backup und Restore. Mach trotzdem vorher ein Backup. Ein Rückweg ist schnell vergessen und teuer, wenn er fehlt.</p>
+<h2>Schritt 5: Umschalten mit Rückfallplan</h2>
+<ul>
+<li>Lege ein <strong>Wartungsfenster</strong> fest und teile es allen Beteiligten mit.</li>
+<li>Sichere den alten Server komplett, bevor du ihn abschaltest.</li>
+<li>Teste nach dem Umschalten die Anmeldungen, die Reports und die Schnittstellen.</li>
+<li>Plane einen <strong>klaren Rückweg</strong>, solange der alte Stand noch nicht überschrieben ist.</li>
+</ul>
+<h2>Nach dem Umstieg: Nutz die neuen Möglichkeiten</h2>
+<p>Starte den Sweep parallel, zum Beispiel mit <code>gfix -sweep -parallel 4</code>. Probier partielle Indizes für Abfragen, die nur einen kleinen Teil der Zeilen betreffen. Und nutz den neuen Profiler, bevor du langsame Abfragen im Blindflug optimierst.</p>
+<h2>Wann Unterstützung sinnvoll ist</h2>
+<p>Eine einzelne Datenbank bekommst du mit diesem Plan in einem Wochenende hin. Schwieriger wird es bei vielen Datenbanken, älteren Anwendungen oder engen Zeitfenstern. Dann hilft ein erfahrener Blick auf die Risiken, bevor etwas schiefgeht.</p>
+<p>Ich begleite solche Migrationen als unabhängiger Datenbankarchitekt, von der Analyse bis zum Betrieb. Als Partner für <strong>HQbird und IBSurgeon in Deutschland</strong> unterstütze ich außerdem bei Monitoring, Backup-Konzepten und der Wiederherstellung beschädigter Firebird-Datenbanken.</p>
+<p>Du planst einen Umstieg oder willst wissen, wo deine Datenbank steht? <a href="/#kontakt">Schreib mir kurz</a>, dann schauen wir gemeinsam darauf.</p><p><a href="/#/blog">← Alle Artikel</a></p></main>
+<footer>© 2026 ArchiDB · <a href="/#/impressum">Impressum</a> · <a href="/#/datenschutz">Datenschutz</a></footer></body></html>

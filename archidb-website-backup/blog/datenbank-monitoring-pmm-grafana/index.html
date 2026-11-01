@@ -1,0 +1,122 @@
+<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Datenbank-Monitoring mit PMM und Grafana: 80 Datenbanken, 30 Minuten – ArchiDB Blog</title><meta name="description" content="Datenbank-Monitoring für 80 Produktiv-Datenbanken: PMM, Grafana und Oracle EMCC mit Docker aufgebaut. Mit Compose-Dateien, Befehlen und Praxis-Tipps."><link rel="canonical" href="https://archidb.de/blog/datenbank-monitoring-pmm-grafana/">
+<meta property="og:type" content="article"><meta property="og:title" content="Datenbank-Monitoring mit PMM und Grafana: 80 Datenbanken, 30 Minuten"><meta property="og:description" content="Datenbank-Monitoring für 80 Produktiv-Datenbanken: PMM, Grafana und Oracle EMCC mit Docker aufgebaut. Mit Compose-Dateien, Befehlen und Praxis-Tipps."><meta property="og:url" content="https://archidb.de/blog/datenbank-monitoring-pmm-grafana/"><meta property="og:image" content="https://archidb.de/og-image.jpg">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "BlogPosting", "headline": "Datenbank-Monitoring mit PMM und Grafana: 80 Datenbanken, 30 Minuten", "description": "Datenbank-Monitoring für 80 Produktiv-Datenbanken: PMM, Grafana und Oracle EMCC mit Docker aufgebaut. Mit Compose-Dateien, Befehlen und Praxis-Tipps.", "inLanguage": "de", "datePublished": "2026-10-18", "mainEntityOfPage": "https://archidb.de/blog/datenbank-monitoring-pmm-grafana/", "author": {"@type": "Person", "name": "Vladislav Sloboder"}, "publisher": {"@type": "Organization", "name": "ArchiDB", "url": "https://archidb.de/"}}</script>
+<style>:root{--bg:#f4f7fb;--fg:#0c1b33;--card:#fff;--mut:#51607a;--acc:#1a6fe0;--line:#dbe3ef}@media(prefers-color-scheme:dark){:root{--bg:#07142b;--fg:#e8eefb;--card:#0e2247;--mut:#9fb0cf;--acc:#4da3ff;--line:#1c355f}}
+body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.8 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}a{color:var(--acc)}
+header,footer{background:var(--card);border-bottom:1px solid var(--line);padding:14px 20px}footer{border:0;border-top:1px solid var(--line);color:var(--mut);font-size:14px}
+header a{font-weight:800;letter-spacing:.06em;text-decoration:none;color:var(--fg)}header b{color:var(--acc)}
+main{max-width:720px;margin:0 auto;padding:36px 20px}h1{font-size:34px;line-height:1.2;margin:0 0 8px}h2{font-size:26px;margin:36px 0 10px}h3{font-size:20px}.meta{color:var(--mut);font-size:14px;margin:0 0 24px}
+code{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:.88em}pre{background:#0b1b36;color:#e6edf7;border-radius:10px;padding:16px;overflow-x:auto}pre code{background:none;border:0;padding:0;color:inherit}
+blockquote{margin:0 0 20px;padding:4px 18px;border-left:4px solid var(--acc);background:var(--card);color:var(--mut)}table{border-collapse:collapse;display:block;overflow-x:auto}th,td{border:1px solid var(--line);padding:8px 12px}img{max-width:100%;height:auto;border-radius:10px}</style><script defer src="https://cloud.umami.is/script.js" data-website-id="feec6a83-3346-4469-988c-ce236cd8bc5d"></script></head>
+<body><header><a href="/">ARCHI<b>DB</b></a> &nbsp;·&nbsp; <a href="/#/blog" style="font-weight:400">Blog</a></header>
+<main><h1>Datenbank-Monitoring mit PMM und Grafana: 80 Datenbanken, 30 Minuten</h1><p class="meta">2026-10-18 · Vladislav Sloboder</p><p>Wer <strong>80 produktive Datenbanken</strong> betreibt, Oracle, MariaDB, MySQL und PostgreSQL gemischt, braucht ein zentrales <strong>Datenbank-Monitoring</strong>. Im Notfall erst zu überlegen, in welchem Tool man nachschauen muss, kostet wertvolle Zeit.</p>
+<p>Mein Ziel war ein <strong>einziger Blick auf alles</strong>. Das Ergebnis läuft produktiv, und die Plattform stand nach etwa <strong>30 Minuten</strong>: mit <strong>Percona Monitoring and Management (PMM)</strong>, <strong>Grafana</strong> und <strong>Docker</strong>, zwei Compose-Dateien und Open-Source-Werkzeugen. In diesem Beitrag zeige ich dir den Aufbau, die Konfiguration und die Stellen, an denen du aufpassen solltest.</p>
+<h2>Architektur: PMM, Oracle EMCC und Grafana im Überblick</h2>
+<p><img alt="Architektur des Datenbank-Monitorings mit PMM Server, Oracle EMCC und zentralem Grafana" src="/blog/images/pmm-grafana-architektur.png" /></p>
+<p>Das Prinzip ist einfach, weil jede Technologie den Weg nimmt, den sie am besten beherrscht:</p>
+<ul>
+<li><strong>Oracle</strong> liefert seine Daten über die vorhandenen Agenten an <strong>Oracle Enterprise Manager Cloud Control (EMCC)</strong>.</li>
+<li><strong>MariaDB, MySQL und PostgreSQL</strong> werden über <strong>Exporter</strong> vom <strong>Percona Monitoring and Management (PMM) Server</strong> eingesammelt.</li>
+<li>Ein <strong>zentrales Grafana</strong> greift auf beide Quellen zu: auf EMCC über ein Plugin und auf PMM über die Prometheus-kompatible Schnittstelle.</li>
+</ul>
+<p>Du brauchst dafür keine neue Monitoring-Welt, sondern nur eine gemeinsame Oberfläche über das, was ohnehin Daten liefert.</p>
+<h2>Schritt 1: Docker-Netzwerk für das Monitoring anlegen</h2>
+<p>Beide Dienste laufen auf demselben Host und sollen sich über Namen erreichen können. Dafür genügt ein externes Netzwerk:</p>
+<pre><code class="language-bash">docker network create monitoring
+docker volume create pmm-data
+</code></pre>
+<h2>Schritt 2: PMM Server mit Docker Compose starten</h2>
+<p>Datei <code>docker-compose.yml</code> im Verzeichnis für PMM:</p>
+<pre><code class="language-yaml">services:
+  pmm-server:
+    image: percona/pmm-server:3
+    container_name: pmm-server
+    restart: always
+    ports:
+      - &quot;443:8443&quot;
+    volumes:
+      - pmm-data:/srv
+    networks:
+      - monitoring
+
+volumes:
+  pmm-data:
+    external: true
+
+networks:
+  monitoring:
+    external: true
+</code></pre>
+<p>Dann <code>docker compose up -d</code>. Die Oberfläche erreichst du danach über <code>https://&lt;host&gt;</code>. Ändere das Standard-Passwort sofort.</p>
+<h2>Schritt 3: Grafana mit Oracle-EMCC-Plugin einrichten</h2>
+<p>Das Plugin liegt als ZIP-Datei im Ordner <code>./plugins</code> und wird beim Start installiert. Die Zugangsdaten gehören nicht in die Compose-Datei, sondern in eine <code>.env</code>-Datei neben ihr.</p>
+<pre><code class="language-yaml">services:
+  grafana:
+    image: grafana/grafana:latest   # in Produktion: feste Version eintragen
+    container_name: grafana_oem_app
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./plugins:/var/lib/grafana/plugins
+    user: &quot;0&quot;
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_PLUGINS_PREINSTALL=/var/lib/grafana/plugins/oracle-emcc-app-5.0.0.zip;oracle-emcc-app
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=oracle-emcc-app,oracle-emcc-datasource
+    restart: unless-stopped
+    ports:
+      - &quot;3000:3000&quot;
+    networks:
+      - monitoring
+
+volumes:
+  grafana-data:
+    name: grafana-data
+
+networks:
+  monitoring:
+    external: true
+</code></pre>
+<p>Zwei Hinweise dazu:</p>
+<ul>
+<li><strong>Unsigniertes Plugin:</strong> Das EMCC-Plugin ist nicht von Grafana signiert, deshalb musst du es ausdrücklich erlauben. Erlaube nur Plugins, deren Herkunft du kennst.</li>
+<li><strong>Root-Benutzer:</strong> Der Container läuft hier als <code>root</code>, damit das Plugin aus dem lokalen ZIP vorinstalliert werden kann. Prüf nach der Einrichtung, ob sich die Rechte eingrenzen lassen.</li>
+</ul>
+<h2>Schritt 4: MySQL, MariaDB, PostgreSQL und Oracle anbinden</h2>
+<p><strong>Oracle:</strong> Hier ändert sich nichts an deinen Agenten. Du richtest in Grafana die EMCC-Datenquelle mit einem Benutzer ein, der nur lesen darf.</p>
+<p><strong>MariaDB, MySQL, PostgreSQL:</strong> Auf jedem Datenbankserver installierst du den PMM-Client, registrierst den Server und fügst die Datenbank hinzu. Für die Anmeldung am PMM Server nutzt du ein Service-Account-Token, nicht das Admin-Passwort:</p>
+<pre><code class="language-bash">pmm-admin config --server-insecure-tls \
+  --server-url=https://service_token:&lt;TOKEN&gt;@&lt;pmm-host&gt;:443
+
+# MySQL oder MariaDB
+pmm-admin add mysql --username=pmm --password='&lt;passwort&gt;' \
+  --query-source=perfschema --service-name=&lt;name&gt; --host=127.0.0.1 --port=3306
+
+# PostgreSQL
+pmm-admin add postgresql --username=pmm --password='&lt;passwort&gt;' \
+  --query-source=pgstatements --service-name=&lt;name&gt; --host=127.0.0.1 --port=5432
+</code></pre>
+<p>Lege für PMM in jeder Datenbank einen eigenen Benutzer mit den Mindestrechten an. Bei 80 Instanzen lohnt sich ein kleines Skript oder eine Ansible-Rolle. Dann kostet jede neue Instanz nur noch wenige Minuten.</p>
+<h2>Schritt 5: PMM als Prometheus-Datenquelle in Grafana</h2>
+<p>In Grafana legst du eine <strong>Prometheus-Datenquelle</strong> an:</p>
+<ul>
+<li><strong>URL:</strong> <code>https://pmm-server:8443/prometheus</code>. Der Name funktioniert, weil beide Container im Netz <code>monitoring</code> hängen.</li>
+<li><strong>Anmeldung:</strong> per Service-Account-Token im Header <code>Authorization: Bearer &lt;TOKEN&gt;</code>.</li>
+<li><strong>TLS:</strong> Bei einem selbst signierten Zertifikat die Prüfung anpassen. Besser ist ein eigenes Zertifikat.</li>
+</ul>
+<p>Details findest du in der <a href="https://docs.percona.com/percona-monitoring-and-management/3/">Dokumentation von Percona</a>. Je nach PMM-Version unterscheidet sich der Pfad (<code>/prometheus</code> oder <code>/victoriametrics</code>). Teste die Erreichbarkeit zuerst mit <code>curl</code> aus dem Grafana-Container.</p>
+<h2>Praxis-Tipps für das Datenbank-Monitoring</h2>
+<ul>
+<li><strong>Benennung ist alles:</strong> Ein einheitliches Schema für Service-Namen und Labels (Umgebung, Kunde, Technologie) macht aus 80 Datenbanken eine durchsuchbare Landschaft.</li>
+<li><strong>Backups nicht vergessen:</strong> Sichere die Volumes <code>pmm-data</code> und <code>grafana-data</code> und die Dashboards. Auch Monitoring fällt irgendwann aus.</li>
+<li><strong>Aufbewahrung planen:</strong> Lege fest, wie lange Metriken bleiben sollen. Das bestimmt den Speicherbedarf.</li>
+<li><strong>Netz begrenzen:</strong> Die Ports 443 und 3000 gehören hinter eine Firewall oder einen Reverse Proxy mit gültigem Zertifikat.</li>
+<li><strong>Versionen festlegen:</strong> Ersetze <code>latest</code> durch eine feste Version und plane Updates bewusst.</li>
+<li><strong>Lizenzen klären:</strong> PMM und Grafana sind Open Source. Für Oracle EMCC und seine Management Packs gelten Oracles Lizenzregeln. Prüf sie vorab, bevor du Daten daraus nutzt.</li>
+</ul>
+<h2>Fazit</h2>
+<p>Gutes Monitoring braucht keine teure Neuanschaffung. Es reicht, die richtigen Datenquellen sauber zu verbinden und in einer Oberfläche zusammenzuführen. Die Plattform steht in einer halben Stunde, den Rest macht die konsequente Anbindung der Datenbanken.</p>
+<p>Plant ihr auch einen Wechsel der Plattform, etwa von <a href="/blog/sql-server-migration-postgresql-firebird/">SQL Server nach PostgreSQL oder Firebird</a>? Dann lohnt es sich, das Monitoring gleich mitzudenken.</p>
+<p>Du betreibst viele Datenbanken und willst sie zentral im Blick haben? Ich plane und baue solche Umgebungen als unabhängiger Datenbankarchitekt, von der Architektur bis zum Betrieb. <a href="/#kontakt">Schreib mir kurz</a>, dann schauen wir gemeinsam, was bei dir sinnvoll ist.</p><p><a href="/#/blog">← Alle Artikel</a></p></main>
+<footer>© 2026 ArchiDB · <a href="/#/impressum">Impressum</a> · <a href="/#/datenschutz">Datenschutz</a></footer></body></html>

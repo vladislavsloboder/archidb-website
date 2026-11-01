@@ -17,15 +17,15 @@ header a{font-weight:800;letter-spacing:.06em;text-decoration:none;color:var(--f
 main{max-width:720px;margin:0 auto;padding:36px 20px}h1{font-size:34px;line-height:1.2;margin:0 0 8px}h2{font-size:26px;margin:36px 0 10px}h3{font-size:20px}.meta{color:var(--mut);font-size:14px;margin:0 0 24px}
 code{background:var(--card);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:.88em}pre{background:#0b1b36;color:#e6edf7;border-radius:10px;padding:16px;overflow-x:auto}pre code{background:none;border:0;padding:0;color:inherit}
 blockquote{margin:0 0 20px;padding:4px 18px;border-left:4px solid var(--acc);background:var(--card);color:var(--mut)}table{border-collapse:collapse;display:block;overflow-x:auto}th,td{border:1px solid var(--line);padding:8px 12px}img{max-width:100%;height:auto;border-radius:10px}</style>{{an}}</head>
-<body><header><a href="/">ARCHI<b>DB</b></a> &nbsp;·&nbsp; <a href="/#/blog" style="font-weight:400">Blog</a></header>
-<main><h1>{{t}}</h1><p class="meta">{{m}}</p>{{b}}<p><a href="/#/blog">← Alle Artikel</a></p></main>
+<body><header><a href="/">ARCHI<b>DB</b></a> &nbsp;·&nbsp; <a href="/blog/" style="font-weight:400">Blog</a></header>
+<main><h1>{{t}}</h1><p class="meta">{{m}}</p>{{b}}<p><a href="/blog/">← Alle Artikel</a></p></main>
 <footer>© 2026 ArchiDB · <a href="/#/impressum">Impressum</a> · <a href="/#/datenschutz">Datenschutz</a></footer></body></html>"""
 
 q = "select=title,slug,summary,body,author,published_at&published=eq.true&order=published_at.desc"
 req = urllib.request.Request(URL + "/rest/v1/posts?" + q, headers={"apikey": KEY})
 rows = json.load(urllib.request.urlopen(req))
 
-posts, slugs, urls = [], set(), [SITE + "/"]
+posts, slugs, urls = [], set(), [SITE + "/", SITE + "/blog/"]
 os.makedirs("backup", exist_ok=True)
 for r in rows:
     slug = re.sub(r"[^a-z0-9-]", "", (r["slug"] or "").lower())
@@ -53,6 +53,26 @@ for r in rows:
         f.write(page)
     with open(f"backup/{day}-{slug}.md", "w", encoding="utf-8") as f:
         f.write(f"---\ntitle: {r['title']}\ndate: {day}\nauthor: {author}\nsummary: {summary}\n---\n{r.get('body') or ''}\n")
+
+# --- Blog-Übersicht als echte Seite: /blog/ (für Suchmaschinen lesbar)
+AN = f'<script defer src="https://cloud.umami.is/script.js" data-website-id="{UMAMI_ID}"></script>' if UMAMI_ID else ""
+cards = "".join(
+    '<article style="border:1px solid var(--line);background:var(--card);border-radius:14px;padding:16px 20px;margin:0 0 16px">'
+    f'<h2 style="margin:0 0 6px;font-size:22px"><a href="/blog/{p["slug"]}/" style="text-decoration:none">{H.escape(p["title"])}</a></h2>'
+    f'<p class="meta" style="margin:0 0 8px">{H.escape((p["date"] or "")[:10])}</p><p style="margin:0 0 8px">{H.escape(p["summary"])}</p>'
+    f'<a href="/blog/{p["slug"]}/">Weiterlesen →</a></article>' for p in posts) or "<p>Noch keine Artikel veröffentlicht.</p>"
+desc = "Praxiswissen zu Datenbanken: Migration, Performance, Monitoring und Betrieb von PostgreSQL, Oracle, MySQL, SQL Server und Firebird."
+ld = {"@context": "https://schema.org", "@type": "Blog", "name": "ArchiDB Blog", "url": SITE + "/blog/", "inLanguage": "de",
+      "blogPost": [{"@type": "BlogPosting", "headline": p["title"], "url": f'{SITE}/blog/{p["slug"]}/'} for p in posts]}
+idx = (TPL.replace("<title>{{t}} – ArchiDB Blog</title>", "<title>Blog: Datenbank-Wissen zu PostgreSQL, Oracle, Firebird | ArchiDB</title>")
+          .replace('og:type" content="article"', 'og:type" content="website"')
+          .replace("<h1>{{t}}</h1>", "<h1>Blog</h1>").replace('<p><a href="/blog/">← Alle Artikel</a></p>', "")
+          .replace("{{t}}", "ArchiDB Blog").replace("{{d}}", desc).replace("{{u}}", SITE + "/blog/")
+          .replace("{{m}}", "Datenbank-Wissen aus der Praxis").replace("{{b}}", cards).replace("{{an}}", AN)
+          .replace("{{ld}}", json.dumps(ld, ensure_ascii=False).replace("</", "<\\/")))
+os.makedirs("blog", exist_ok=True)
+with open("blog/index.html", "w", encoding="utf-8") as f:
+    f.write(idx)
 
 if os.path.isdir("blog"):
     for d in os.listdir("blog"):
